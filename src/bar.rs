@@ -5,7 +5,7 @@
 
 /// Render a Unicode block bar of `width` characters representing `percent`
 /// in 0..=100. Uses U+2588 FULL BLOCK for filled cells, U+2591 LIGHT SHADE
-/// for empty. Rounds half toward zero.
+/// for empty. Uses standard half-away-from-zero rounding (`f64::round`).
 #[must_use]
 pub fn render(percent: f64, width: usize) -> String {
     let clamped = percent.clamp(0.0, 100.0);
@@ -50,6 +50,11 @@ mod tests {
     fn rounds_correctly() {
         assert_eq!(render(12.0, 4), "░░░░");
         assert_eq!(render(13.0, 4), "█░░░");
+    }
+
+    #[test]
+    fn rounds_half_away_from_zero_at_width_one() {
+        assert_eq!(render(50.0, 1), "█");
     }
 
     #[test]
