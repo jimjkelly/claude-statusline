@@ -1,4 +1,5 @@
 mod cli;
+mod input;
 
 fn main() {
     let _args = crate::cli::Cli::parse_args();

@@ -1,0 +1,20 @@
+{
+  "model": { "id": "claude-opus-4-7", "display_name": "Opus 4.7" },
+  "workspace": { "current_dir": "/Users/me/dev/claude-prompt" },
+  "cost": {
+    "total_cost_usd": 1.234,
+    "total_duration_ms": 720000,
+    "total_lines_added": 24,
+    "total_lines_removed": 7
+  },
+  "context_window": {
+    "context_window_size": 200000,
+    "used_percentage": 39,
+    "remaining_percentage": 61
+  },
+  "rate_limits": {
+    "five_hour": { "used_percentage": 27, "resets_at": 1749250000 },
+    "seven_day": { "used_percentage": 34, "resets_at": 1749500000 }
+  },
+  "pr": { "number": 42, "review_state": "approved" }
+}
