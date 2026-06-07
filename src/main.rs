@@ -1,3 +1,4 @@
+mod bar;
 mod cli;
 mod input;
 
