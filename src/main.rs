@@ -1,5 +1,6 @@
 mod bar;
 mod cli;
+mod color;
 mod input;
 
 fn main() {
