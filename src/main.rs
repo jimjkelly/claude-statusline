@@ -2,6 +2,7 @@ mod bar;
 mod cli;
 mod color;
 mod format;
+mod git;
 mod input;
 mod pace;
 mod theme;
