@@ -14,7 +14,8 @@ pub struct Pace {
     pub delta_pct: f64,
 }
 
-/// Returns None if `resets_at` is in the past or if elapsed is non-finite.
+/// Returns `None` when `now` is outside the 7-day window ending at
+/// `resets_at` (exclusive at the start, inclusive at the end).
 #[must_use]
 pub fn compute(used_pct: f64, resets_at: i64, now: i64) -> Option<Pace> {
     let window_start = resets_at - SEVEN_DAYS_SECS;
@@ -143,5 +144,27 @@ mod tests {
         };
         assert_eq!(render(pace, 50.0, 0), "");
         assert_eq!(render(pace, 50.0, 2), "");
+    }
+
+    #[test]
+    fn render_pipe_at_start_when_week_begins() {
+        let pace = Pace {
+            elapsed: 0.0,
+            delta_pct: 0.0,
+        };
+        let bar = render(pace, 0.0, 15);
+        assert!(bar.starts_with('|'));
+        assert_eq!(bar.chars().count(), 15);
+    }
+
+    #[test]
+    fn render_pipe_at_end_when_week_ends() {
+        let pace = Pace {
+            elapsed: 1.0,
+            delta_pct: 0.0,
+        };
+        let bar = render(pace, 100.0, 15);
+        assert!(bar.ends_with('|'));
+        assert_eq!(bar.chars().count(), 15);
     }
 }
