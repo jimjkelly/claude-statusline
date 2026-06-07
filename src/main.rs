@@ -5,6 +5,7 @@ mod format;
 mod git;
 mod input;
 mod pace;
+mod render;
 mod theme;
 
 fn main() {

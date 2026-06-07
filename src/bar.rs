@@ -1,8 +1,3 @@
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumed by renderer starting in Task 10")
-)]
-
 /// Render a Unicode block bar of `width` characters representing `percent`
 /// in 0..=100. Uses U+2588 FULL BLOCK for filled cells, U+2591 LIGHT SHADE
 /// for empty. Uses standard half-away-from-zero rounding (`f64::round`).

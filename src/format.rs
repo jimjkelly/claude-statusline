@@ -21,10 +21,6 @@ pub fn duration_short(ms: u64) -> String {
 
 /// Format remaining time until a Unix epoch timestamp. Returns `0s` if the
 /// target is in the past.
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumed by renderer starting in Task 10")
-)]
 #[must_use]
 pub fn time_remaining(target_epoch: i64, now_epoch: i64) -> String {
     let delta = target_epoch.saturating_sub(now_epoch).max(0);
