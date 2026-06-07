@@ -1,0 +1,36 @@
+[package]
+name = "claude-prompt"
+version = "0.1.0"
+edition = "2021"
+description = "Claude Code statusline showing session and weekly rate-limit usage"
+license = "MIT"
+
+[dependencies]
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+insta = { version = "1", features = ["json"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+unwrap_used = "deny"
+expect_used = "warn"
+panic = "deny"
+panic_in_result_fn = "deny"
+unimplemented = "deny"
+allow_attributes = "deny"
+dbg_macro = "deny"
+todo = "deny"
+print_stdout = "deny"
+print_stderr = "deny"
+exit = "deny"
+module_name_repetitions = "allow"
+similar_names = "allow"
