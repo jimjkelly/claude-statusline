@@ -1,5 +1,3 @@
-#![expect(dead_code, reason = "consumed by renderer starting in Task 10")]
-
 /// ANSI color codes used by claude-prompt. Numbered to match the 8/16-color
 /// palette so they render correctly even on terminals without 256-color
 /// support.

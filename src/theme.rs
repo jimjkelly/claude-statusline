@@ -1,5 +1,3 @@
-#![expect(dead_code, reason = "consumed by renderer starting in Task 10")]
-
 /// Theme picks between plain text labels and Nerd Font glyphs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Theme {

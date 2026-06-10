@@ -1,8 +1,3 @@
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumed by main wiring in Task 13")
-)]
-
 use std::fmt::Write;
 use std::path::Path;
 
@@ -18,7 +13,6 @@ pub struct RenderOptions {
     pub theme: Theme,
     pub color_enabled: bool,
     pub now_epoch: i64,
-    #[expect(dead_code, reason = "consumed by responsive collapse in Task 12")]
     pub columns: usize,
 }
 
@@ -44,14 +38,12 @@ fn paint(out: &mut String, color: Color, enabled: bool, body: &str) {
     }
 }
 
-/// Render line 1: sess bar, week bar, model.
-#[must_use]
-pub fn line_one(input: &Input, opts: RenderOptions) -> String {
+fn line_one_with_bar_width(input: &Input, opts: RenderOptions, bar_width: usize) -> String {
     let mut out = String::new();
     let theme = opts.theme;
 
     if let Some(w) = input.rate_limits.five_hour {
-        let bar = bar::render(w.used_percentage, 12);
+        let bar = bar::render(w.used_percentage, bar_width);
         let color = color::threshold(w.used_percentage, 60.0, 85.0);
         let _ = write!(out, "{} [", theme.sess());
         paint(&mut out, color, opts.color_enabled, &bar);
@@ -63,7 +55,7 @@ pub fn line_one(input: &Input, opts: RenderOptions) -> String {
         if !out.is_empty() {
             out.push_str(" · ");
         }
-        let bar = bar::render(w.used_percentage, 12);
+        let bar = bar::render(w.used_percentage, bar_width);
         let color = color::threshold(w.used_percentage, 60.0, 85.0);
         let _ = write!(out, "{} [", theme.week());
         paint(&mut out, color, opts.color_enabled, &bar);
@@ -78,6 +70,16 @@ pub fn line_one(input: &Input, opts: RenderOptions) -> String {
         out.push_str(&input.model.display_name);
     }
     out
+}
+
+/// Render line 1: sess bar, week bar, model.
+#[must_use]
+pub fn line_one(input: &Input, opts: RenderOptions) -> String {
+    line_one_with_bar_width(input, opts, 12)
+}
+
+fn line_one_short(input: &Input, opts: RenderOptions) -> String {
+    line_one_with_bar_width(input, opts, 4)
 }
 
 fn ctx_segment(input: &Input, opts: RenderOptions, out: &mut String) {
@@ -151,10 +153,19 @@ fn pr_segment(input: &Input, out: &mut String) {
     let _ = write!(out, "#{} {}", pr.number, pr.review_state);
 }
 
-/// Render line 2: dir, branch, ctx bar, pace, cost, duration, lines, pr.
-#[must_use]
-pub fn line_two(input: &Input, branch: Option<&str>, opts: RenderOptions) -> String {
-    let mut segs: Vec<String> = Vec::new();
+struct Segment {
+    kind: &'static str,
+    body: String,
+}
+
+fn push_if_nonempty(segs: &mut Vec<Segment>, kind: &'static str, body: String) {
+    if !body.is_empty() {
+        segs.push(Segment { kind, body });
+    }
+}
+
+fn line_two_segments(input: &Input, branch: Option<&str>, opts: RenderOptions) -> Vec<Segment> {
+    let mut segs: Vec<Segment> = Vec::new();
 
     let dir_name = Path::new(&input.workspace.current_dir)
         .file_name()
@@ -164,7 +175,7 @@ pub fn line_two(input: &Input, branch: Option<&str>, opts: RenderOptions) -> Str
         let mut s = String::new();
         s.push_str(opts.theme.dir());
         s.push_str(dir_name);
-        segs.push(s);
+        push_if_nonempty(&mut segs, "dir", s);
     }
 
     if let Some(b) = branch {
@@ -172,42 +183,93 @@ pub fn line_two(input: &Input, branch: Option<&str>, opts: RenderOptions) -> Str
             let mut s = String::new();
             s.push_str(opts.theme.branch());
             s.push_str(b);
-            segs.push(s);
+            push_if_nonempty(&mut segs, "branch", s);
         }
     }
 
     let mut tmp = String::new();
     ctx_segment(input, opts, &mut tmp);
-    if !tmp.is_empty() {
-        segs.push(std::mem::take(&mut tmp));
-    }
+    push_if_nonempty(&mut segs, "ctx", std::mem::take(&mut tmp));
 
     pace_segment(input, opts, &mut tmp);
-    if !tmp.is_empty() {
-        segs.push(std::mem::take(&mut tmp));
-    }
+    push_if_nonempty(&mut segs, "pace", std::mem::take(&mut tmp));
 
     cost_segment(input, opts, &mut tmp);
-    if !tmp.is_empty() {
-        segs.push(std::mem::take(&mut tmp));
-    }
+    push_if_nonempty(&mut segs, "cost", std::mem::take(&mut tmp));
 
     duration_segment(input, &mut tmp);
-    if !tmp.is_empty() {
-        segs.push(std::mem::take(&mut tmp));
-    }
+    push_if_nonempty(&mut segs, "duration", std::mem::take(&mut tmp));
 
     lines_segment(input, &mut tmp);
-    if !tmp.is_empty() {
-        segs.push(std::mem::take(&mut tmp));
-    }
+    push_if_nonempty(&mut segs, "lines", std::mem::take(&mut tmp));
 
     pr_segment(input, &mut tmp);
-    if !tmp.is_empty() {
-        segs.push(std::mem::take(&mut tmp));
+    push_if_nonempty(&mut segs, "pr", std::mem::take(&mut tmp));
+
+    segs
+}
+
+fn join_segments(segs: &[Segment]) -> String {
+    let bodies: Vec<&str> = segs.iter().map(|s| s.body.as_str()).collect();
+    bodies.join(" · ")
+}
+
+/// Render line 2: dir, branch, ctx bar, pace, cost, duration, lines, pr.
+#[must_use]
+pub fn line_two(input: &Input, branch: Option<&str>, opts: RenderOptions) -> String {
+    join_segments(&line_two_segments(input, branch, opts))
+}
+
+/// Count visible characters (excludes ANSI SGR escape sequences).
+fn visible_width(s: &str) -> usize {
+    let mut count = 0;
+    let mut chars = s.chars();
+    while let Some(c) = chars.next() {
+        if c == '\u{1b}' {
+            for x in chars.by_ref() {
+                if x == 'm' {
+                    break;
+                }
+            }
+            continue;
+        }
+        count += 1;
+    }
+    count
+}
+
+const DROP_ORDER: &[&str] = &[
+    "lines", "duration", "pr", "cost", "dir", "pace", "branch", "ctx",
+];
+
+/// Render the full two-line statusline with responsive collapse.
+///
+/// Drops low-priority segments from line 2 when the joined width exceeds
+/// `opts.columns`. If line 1 still overflows, shrinks the session/weekly
+/// bars from 12 to 4 cells.
+#[must_use]
+pub fn render(input: &Input, branch: Option<&str>, opts: RenderOptions) -> String {
+    let mut segs = line_two_segments(input, branch, opts);
+    let mut line2 = join_segments(&segs);
+    let max = opts.columns;
+
+    let mut drop_iter = DROP_ORDER.iter();
+    while visible_width(&line2) > max {
+        let Some(kind) = drop_iter.next() else { break };
+        if let Some(idx) = segs.iter().position(|s| &s.kind == kind) {
+            segs.remove(idx);
+            line2 = join_segments(&segs);
+        }
     }
 
-    segs.join(" · ")
+    let line1 = line_one(input, opts);
+    let line1_final = if visible_width(&line1) > max {
+        line_one_short(input, opts)
+    } else {
+        line1
+    };
+
+    format!("{line1_final}\n{line2}")
 }
 
 #[cfg(test)]
@@ -223,23 +285,24 @@ mod tests {
         Input::from_reader(&bytes[..]).unwrap()
     }
 
+    // resets_at 1_749_250_000; pick now 1 hour earlier.
+    const NOW_EPOCH: i64 = 1_749_246_400;
+
     #[test]
     fn line_one_plain_no_color() {
         let input = fixture();
-        // resets_at 1_749_250_000; pick now 1 hour earlier
-        let opts = RenderOptions::new(Theme::Plain, false, 1_749_246_400, 200);
+        let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
         let s = line_one(&input, opts);
         assert!(s.contains("Sess ["));
         assert!(s.contains("Week ["));
         assert!(s.contains("Opus 4.7"));
-        // No ANSI escapes when color disabled.
         assert!(!s.contains("\u{1b}["));
     }
 
     #[test]
     fn line_one_color_emits_ansi() {
         let input = fixture();
-        let opts = RenderOptions::new(Theme::Plain, true, 1_749_246_400, 200);
+        let opts = RenderOptions::new(Theme::Plain, true, NOW_EPOCH, 200);
         let s = line_one(&input, opts);
         assert!(s.contains("\u{1b}["));
     }
@@ -247,7 +310,7 @@ mod tests {
     #[test]
     fn line_two_full_fixture() {
         let input = fixture();
-        let opts = RenderOptions::new(Theme::Plain, false, 1_749_246_400, 200);
+        let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
         let s = line_two(&input, Some("main"), opts);
         assert!(s.contains("claude-prompt"));
         assert!(s.contains("main"));
@@ -273,5 +336,44 @@ mod tests {
         assert!(!s.contains("Pace"));
         assert!(!s.contains('$'));
         assert!(!s.contains('#'));
+    }
+
+    #[test]
+    fn visible_width_strips_ansi() {
+        assert_eq!(visible_width("abc"), 3);
+        assert_eq!(visible_width("\u{1b}[32mabc\u{1b}[0m"), 3);
+        assert_eq!(visible_width("a\u{1b}[2mb\u{1b}[0mc"), 3);
+    }
+
+    #[test]
+    fn wide_terminal_keeps_everything() {
+        let input = fixture();
+        let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
+        let out = render(&input, Some("main"), opts);
+        assert!(out.contains("+24/-7"));
+        assert!(out.contains("12m"));
+        assert!(out.contains("Pace ["));
+        let lines: Vec<_> = out.split('\n').collect();
+        assert_eq!(lines.len(), 2);
+    }
+
+    #[test]
+    fn narrow_terminal_drops_lowest_priority_first() {
+        let input = fixture();
+        let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 70);
+        let out = render(&input, Some("main"), opts);
+        assert!(!out.contains("+24/-7"));
+        // Line 1's Sess and Week always survive.
+        assert!(out.contains("Sess "));
+        assert!(out.contains("Week "));
+    }
+
+    #[test]
+    fn very_narrow_terminal_shortens_line_one_bars() {
+        let input = fixture();
+        let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 40);
+        let out = render(&input, Some("main"), opts);
+        assert!(out.contains("Sess "));
+        assert!(out.contains("Week "));
     }
 }

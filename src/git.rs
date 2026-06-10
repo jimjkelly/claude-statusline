@@ -1,8 +1,3 @@
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumed by main wiring in Task 13")
-)]
-
 use std::path::Path;
 use std::process::Command;
 

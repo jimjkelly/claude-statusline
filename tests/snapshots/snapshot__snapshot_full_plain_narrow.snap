@@ -1,0 +1,6 @@
+---
+source: tests/snapshot.rs
+expression: out
+---
+Sess [█░░░] 27% 1h0m · Week [█░░░] 34% 2d22h · Opus 4.7
+main · Ctx [█████░░░░░░░] 39% · Pace [░░░░░█░░|░░░░░░] -24%

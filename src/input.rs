@@ -1,8 +1,3 @@
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumed by renderer starting in Task 10")
-)]
-
 use serde::Deserialize;
 
 #[derive(Deserialize, Debug, Default, Clone)]
@@ -30,10 +25,6 @@ pub struct Workspace {
 
 #[derive(Deserialize, Debug, Default, Clone)]
 #[serde(default)]
-#[expect(
-    clippy::struct_field_names,
-    reason = "field names mirror the Claude Code stdin JSON schema"
-)]
 pub struct Cost {
     pub total_cost_usd: f64,
     pub total_duration_ms: u64,
@@ -67,6 +58,12 @@ pub struct Pr {
 }
 
 impl Input {
+    /// Parse a Claude Code statusline JSON document from `reader`.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the reader fails or the bytes are not valid JSON
+    /// matching the expected schema.
     pub fn from_reader<R: std::io::Read>(reader: R) -> anyhow::Result<Self> {
         let parsed: Self = serde_json::from_reader(reader)?;
         Ok(parsed)
