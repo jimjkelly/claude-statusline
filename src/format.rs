@@ -29,19 +29,11 @@ pub fn time_remaining(target_epoch: i64, now_epoch: i64) -> String {
     duration_short(ms)
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumed by renderer starting in Task 10")
-)]
 #[must_use]
 pub fn cost_usd(amount: f64) -> String {
     format!("${amount:.2}")
 }
 
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumed by renderer starting in Task 10")
-)]
 #[must_use]
 pub fn lines(added: u64, removed: u64) -> String {
     format!("+{added}/-{removed}")

@@ -1,8 +1,3 @@
-#![cfg_attr(
-    not(test),
-    expect(dead_code, reason = "consumed by renderer starting in Task 11")
-)]
-
 const SEVEN_DAYS_SECS: i64 = 7 * 24 * 60 * 60;
 
 /// Computed pace state for the weekly window.
