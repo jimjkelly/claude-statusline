@@ -3,4 +3,5 @@ source: tests/snapshot.rs
 expression: out
 ---
 Sess [███░░░░░░░░░] 27% 1h0m · Week [████░░░░░░░░] 34% 2d22h · Opus 4.7
-claude-prompt · main · Ctx [█████░░░░░░░] 39% · Pace [░░░░░█░░|░░░░░░] -24% · $1.23 · 12m · +24/-7 · #42 approved
+Ctx [█████░░░░░░░] 39% · Pace [░░░░░█░░|░░░░░░] -24% · $1.23 · 12m · +24/-7 · #42 approved
+claude-prompt · main

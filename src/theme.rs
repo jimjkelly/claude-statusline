@@ -10,7 +10,7 @@ impl Theme {
     pub fn sess(self) -> &'static str {
         match self {
             Self::Plain => "Sess",
-            Self::Nerd => "\u{f155}", // nf-fa-dollar (placeholder; tweak after install)
+            Self::Nerd => "\u{f2f2}", // nf-fa-stopwatch (5-hour session window)
         }
     }
 
@@ -34,7 +34,7 @@ impl Theme {
     pub fn pace(self) -> &'static str {
         match self {
             Self::Plain => "Pace",
-            Self::Nerd => "\u{e213}", // nf-mdi-trending_up
+            Self::Nerd => "\u{f201}", // nf-fa-line_chart
         }
     }
 

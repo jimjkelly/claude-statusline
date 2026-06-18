@@ -129,10 +129,11 @@ fn cost_segment(input: &Input, opts: RenderOptions, out: &mut String) {
     paint(out, color, opts.color_enabled, &format::cost_usd(amount));
 }
 
-fn duration_segment(input: &Input, out: &mut String) {
+fn duration_segment(input: &Input, opts: RenderOptions, out: &mut String) {
     if input.cost.total_duration_ms == 0 {
         return;
     }
+    out.push_str(opts.theme.duration());
     out.push_str(&format::duration_short(input.cost.total_duration_ms));
 }
 
@@ -164,28 +165,8 @@ fn push_if_nonempty(segs: &mut Vec<Segment>, kind: &'static str, body: String) {
     }
 }
 
-fn line_two_segments(input: &Input, branch: Option<&str>, opts: RenderOptions) -> Vec<Segment> {
+fn line_two_segments(input: &Input, opts: RenderOptions) -> Vec<Segment> {
     let mut segs: Vec<Segment> = Vec::new();
-
-    let dir_name = Path::new(&input.workspace.current_dir)
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("");
-    if !dir_name.is_empty() {
-        let mut s = String::new();
-        s.push_str(opts.theme.dir());
-        s.push_str(dir_name);
-        push_if_nonempty(&mut segs, "dir", s);
-    }
-
-    if let Some(b) = branch {
-        if !b.is_empty() {
-            let mut s = String::new();
-            s.push_str(opts.theme.branch());
-            s.push_str(b);
-            push_if_nonempty(&mut segs, "branch", s);
-        }
-    }
 
     let mut tmp = String::new();
     ctx_segment(input, opts, &mut tmp);
@@ -197,7 +178,7 @@ fn line_two_segments(input: &Input, branch: Option<&str>, opts: RenderOptions) -
     cost_segment(input, opts, &mut tmp);
     push_if_nonempty(&mut segs, "cost", std::mem::take(&mut tmp));
 
-    duration_segment(input, &mut tmp);
+    duration_segment(input, opts, &mut tmp);
     push_if_nonempty(&mut segs, "duration", std::mem::take(&mut tmp));
 
     lines_segment(input, &mut tmp);
@@ -214,10 +195,38 @@ fn join_segments(segs: &[Segment]) -> String {
     bodies.join(" · ")
 }
 
-/// Render line 2: dir, branch, ctx bar, pace, cost, duration, lines, pr.
+/// Render line 2: ctx bar, pace, cost, duration, lines, pr.
 #[must_use]
-pub fn line_two(input: &Input, branch: Option<&str>, opts: RenderOptions) -> String {
-    join_segments(&line_two_segments(input, branch, opts))
+pub fn line_two(input: &Input, opts: RenderOptions) -> String {
+    join_segments(&line_two_segments(input, opts))
+}
+
+/// Render line 3: working directory and git branch.
+#[must_use]
+pub fn line_three(input: &Input, branch: Option<&str>, opts: RenderOptions) -> String {
+    let mut parts: Vec<String> = Vec::new();
+
+    let dir_name = Path::new(&input.workspace.current_dir)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("");
+    if !dir_name.is_empty() {
+        let mut s = String::new();
+        s.push_str(opts.theme.dir());
+        s.push_str(dir_name);
+        parts.push(s);
+    }
+
+    if let Some(b) = branch {
+        if !b.is_empty() {
+            let mut s = String::new();
+            s.push_str(opts.theme.branch());
+            s.push_str(b);
+            parts.push(s);
+        }
+    }
+
+    parts.join(" · ")
 }
 
 /// Count visible characters (excludes ANSI SGR escape sequences).
@@ -238,18 +247,16 @@ fn visible_width(s: &str) -> usize {
     count
 }
 
-const DROP_ORDER: &[&str] = &[
-    "lines", "duration", "pr", "cost", "dir", "pace", "branch", "ctx",
-];
+const DROP_ORDER: &[&str] = &["lines", "duration", "pr", "cost", "pace", "ctx"];
 
-/// Render the full two-line statusline with responsive collapse.
+/// Render the full three-line statusline with responsive collapse.
 ///
 /// Drops low-priority segments from line 2 when the joined width exceeds
 /// `opts.columns`. If line 1 still overflows, shrinks the session/weekly
-/// bars from 12 to 4 cells.
+/// bars from 12 to 4 cells. Line 3 (dir + branch) is never collapsed.
 #[must_use]
 pub fn render(input: &Input, branch: Option<&str>, opts: RenderOptions) -> String {
-    let mut segs = line_two_segments(input, branch, opts);
+    let mut segs = line_two_segments(input, opts);
     let mut line2 = join_segments(&segs);
     let max = opts.columns;
 
@@ -269,7 +276,16 @@ pub fn render(input: &Input, branch: Option<&str>, opts: RenderOptions) -> Strin
         line1
     };
 
-    format!("{line1_final}\n{line2}")
+    let line3 = line_three(input, branch, opts);
+    let mut lines: Vec<&str> = Vec::with_capacity(3);
+    lines.push(&line1_final);
+    if !line2.is_empty() {
+        lines.push(&line2);
+    }
+    if !line3.is_empty() {
+        lines.push(&line3);
+    }
+    lines.join("\n")
 }
 
 #[cfg(test)]
@@ -311,15 +327,25 @@ mod tests {
     fn line_two_full_fixture() {
         let input = fixture();
         let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
-        let s = line_two(&input, Some("main"), opts);
-        assert!(s.contains("claude-prompt"));
-        assert!(s.contains("main"));
+        let s = line_two(&input, opts);
         assert!(s.contains("Ctx ["));
         assert!(s.contains("Pace ["));
         assert!(s.contains("$1.23"));
         assert!(s.contains("12m"));
         assert!(s.contains("+24/-7"));
         assert!(s.contains("#42 approved"));
+        // Dir and branch live on line 3 now.
+        assert!(!s.contains("claude-prompt"));
+        assert!(!s.contains("main"));
+    }
+
+    #[test]
+    fn line_three_full_fixture() {
+        let input = fixture();
+        let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
+        let s = line_three(&input, Some("main"), opts);
+        assert!(s.contains("claude-prompt"));
+        assert!(s.contains("main"));
     }
 
     #[test]
@@ -331,7 +357,7 @@ mod tests {
         let bytes = include_bytes!("../tests/fixtures/minimal.json");
         let input = Input::from_reader(&bytes[..]).unwrap();
         let opts = RenderOptions::new(Theme::Plain, false, 0, 200);
-        let s = line_two(&input, None, opts);
+        let s = line_two(&input, opts);
         assert!(!s.contains("Ctx"));
         assert!(!s.contains("Pace"));
         assert!(!s.contains('$'));
@@ -354,7 +380,9 @@ mod tests {
         assert!(out.contains("12m"));
         assert!(out.contains("Pace ["));
         let lines: Vec<_> = out.split('\n').collect();
-        assert_eq!(lines.len(), 2);
+        assert_eq!(lines.len(), 3);
+        assert!(lines[2].contains("claude-prompt"));
+        assert!(lines[2].contains("main"));
     }
 
     #[test]

@@ -3,4 +3,5 @@ source: tests/snapshot.rs
 expression: out
 ---
 Haiku 4.5
-tmp · main · Ctx [█░░░░░░░░░░░] 12% · $0.05 · 30s
+Ctx [█░░░░░░░░░░░] 12% · $0.05 · 30s
+tmp · main
