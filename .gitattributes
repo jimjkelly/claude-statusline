@@ -1,0 +1,3 @@
+# Keep LF in the working tree on every platform. Snapshot tests compare
+# rendered output byte-for-byte, so a CRLF checkout on Windows would fail them.
+* text=auto eol=lf
