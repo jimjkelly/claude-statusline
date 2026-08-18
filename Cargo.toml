@@ -2,6 +2,7 @@
 name = "claude-statusline"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.85"
 description = "Claude Code statusline showing session and weekly rate-limit usage"
 repository = "https://github.com/jimjkelly/claude-statusline"
 readme = "README.md"
