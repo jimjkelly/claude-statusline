@@ -48,6 +48,11 @@ jobs:
             target: aarch64-apple-darwin
           - os: macos-latest
             target: x86_64-apple-darwin
+          # x64 only: Windows on ARM runs x64 binaries under emulation, and
+          # cross-linking aarch64-pc-windows-msvc depends on ARM64 MSVC tools
+          # being present on the runner image. Not worth blocking a release on.
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -66,16 +71,31 @@ jobs:
         run: cargo build --release --locked --target "$TARGET"
 
       - name: Package
+        shell: bash
         env:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
+          # macOS ships shasum but not sha256sum; Linux and Git Bash ship both.
+          checksum() {
+            if command -v sha256sum >/dev/null 2>&1; then
+              sha256sum "$1"
+            else
+              shasum -a 256 "$1"
+            fi
+          }
           staging="claude-statusline-${TARGET}"
           mkdir -p "$staging"
-          cp "target/${TARGET}/release/claude-statusline" "$staging/"
-          cp README.md LICENSE-MIT LICENSE-APACHE "$staging/"
-          tar czf "${staging}.tar.gz" "$staging"
-          shasum -a 256 "${staging}.tar.gz" > "${staging}.tar.gz.sha256"
+          cp README.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md "$staging/"
+          if [ "${RUNNER_OS}" = "Windows" ]; then
+            cp "target/${TARGET}/release/claude-statusline.exe" "$staging/"
+            7z a "${staging}.zip" "$staging" >/dev/null
+            checksum "${staging}.zip" > "${staging}.zip.sha256"
+          else
+            cp "target/${TARGET}/release/claude-statusline" "$staging/"
+            tar czf "${staging}.tar.gz" "$staging"
+            checksum "${staging}.tar.gz" > "${staging}.tar.gz.sha256"
+          fi
 
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -83,6 +103,8 @@ jobs:
           path: |
             claude-statusline-${{ matrix.target }}.tar.gz
             claude-statusline-${{ matrix.target }}.tar.gz.sha256
+            claude-statusline-${{ matrix.target }}.zip
+            claude-statusline-${{ matrix.target }}.zip.sha256
           if-no-files-found: error
 
   release:

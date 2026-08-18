@@ -17,6 +17,22 @@ terminal narrows.
 
 ## Install
 
+### Prebuilt binaries
+
+Each [release](https://github.com/jimjkelly/claude-statusline/releases) ships
+archives with a `.sha256` alongside:
+
+| Platform | Target |
+| --- | --- |
+| macOS (Apple Silicon) | `aarch64-apple-darwin` |
+| macOS (Intel) | `x86_64-apple-darwin` |
+| Linux (x86_64) | `x86_64-unknown-linux-gnu` |
+| Linux (ARM64) | `aarch64-unknown-linux-gnu` |
+| Windows (x86_64) | `x86_64-pc-windows-msvc` |
+
+Windows on ARM runs the x86_64 build under emulation. Linux builds link
+against glibc; use the Nix or Cargo install on musl systems such as Alpine.
+
 ### Nix
 
 ```bash

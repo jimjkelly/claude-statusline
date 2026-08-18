@@ -26,6 +26,8 @@ Initial release.
 - `--nerd` for Nerd Font glyphs, `--no-color` (also honors `NO_COLOR`), and
   `--debug` to dump parsed stdin to stderr.
 - Nix flake exposing the package, a dev shell, and a formatter.
+- Prebuilt release binaries for macOS (Apple Silicon and Intel), Linux (x86_64
+  and ARM64), and Windows (x86_64), each with a SHA-256 checksum.
 
 ### Notes
 
