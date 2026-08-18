@@ -335,7 +335,7 @@ mod tests {
         assert!(s.contains("+24/-7"));
         assert!(s.contains("#42 approved"));
         // Dir and branch live on line 3 now.
-        assert!(!s.contains("claude-prompt"));
+        assert!(!s.contains("claude-statusline"));
         assert!(!s.contains("main"));
     }
 
@@ -344,7 +344,7 @@ mod tests {
         let input = fixture();
         let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
         let s = line_three(&input, Some("main"), opts);
-        assert!(s.contains("claude-prompt"));
+        assert!(s.contains("claude-statusline"));
         assert!(s.contains("main"));
     }
 
@@ -381,7 +381,7 @@ mod tests {
         assert!(out.contains("Pace ["));
         let lines: Vec<_> = out.split('\n').collect();
         assert_eq!(lines.len(), 3);
-        assert!(lines[2].contains("claude-prompt"));
+        assert!(lines[2].contains("claude-statusline"));
         assert!(lines[2].contains("main"));
     }
 

@@ -1,6 +1,6 @@
-use claude_prompt::input::Input;
-use claude_prompt::render::{render, RenderOptions};
-use claude_prompt::theme::Theme;
+use claude_statusline::input::Input;
+use claude_statusline::render::{render, RenderOptions};
+use claude_statusline::theme::Theme;
 
 #[expect(
     clippy::unwrap_used,

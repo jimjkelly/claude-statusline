@@ -1,4 +1,4 @@
-/// ANSI color codes used by claude-prompt. Numbered to match the 8/16-color
+/// ANSI color codes used by claude-statusline. Numbered to match the 8/16-color
 /// palette so they render correctly even on terminals without 256-color
 /// support.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

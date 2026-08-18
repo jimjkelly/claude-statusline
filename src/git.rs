@@ -44,7 +44,7 @@ mod tests {
     fn this_repo_has_a_branch() {
         let cwd = std::env::current_dir().unwrap();
         let branch = current_branch(&cwd);
-        // claude-prompt itself is a git repo; if running from there we
+        // claude-statusline itself is a git repo; if running from there we
         // expect Some. If running from somewhere else (CI scratch) we
         // accept None.
         if let Some(b) = branch {

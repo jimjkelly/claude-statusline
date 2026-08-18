@@ -2,12 +2,12 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use claude_prompt::cli::Cli;
-use claude_prompt::color;
-use claude_prompt::git;
-use claude_prompt::input::Input;
-use claude_prompt::render::{render, RenderOptions};
-use claude_prompt::theme::Theme;
+use claude_statusline::cli::Cli;
+use claude_statusline::color;
+use claude_statusline::git;
+use claude_statusline::input::Input;
+use claude_statusline::render::{render, RenderOptions};
+use claude_statusline::theme::Theme;
 
 fn now_epoch() -> i64 {
     SystemTime::now()
@@ -27,12 +27,12 @@ fn run(args: &Cli) -> anyhow::Result<String> {
     io::stdin().read_to_string(&mut buf)?;
 
     if buf.trim().is_empty() {
-        return Ok("claude-prompt (no data)".to_string());
+        return Ok("claude-statusline (no data)".to_string());
     }
 
     let input: Input = match Input::from_reader(buf.as_bytes()) {
         Ok(v) => v,
-        Err(_) => return Ok("claude-prompt (no data)".to_string()),
+        Err(_) => return Ok("claude-statusline (no data)".to_string()),
     };
 
     if args.debug {

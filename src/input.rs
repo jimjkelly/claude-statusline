@@ -83,7 +83,10 @@ mod tests {
         let bytes = include_bytes!("../tests/fixtures/full.json");
         let input = Input::from_reader(&bytes[..]).unwrap();
         assert_eq!(input.model.display_name, "Opus 4.7");
-        assert_eq!(input.workspace.current_dir, "/Users/me/dev/claude-prompt");
+        assert_eq!(
+            input.workspace.current_dir,
+            "/Users/me/dev/claude-statusline"
+        );
         assert!((input.cost.total_cost_usd - 1.234).abs() < 1e-9);
         let five = input.rate_limits.five_hour.unwrap();
         assert!((five.used_percentage - 27.0).abs() < 1e-9);

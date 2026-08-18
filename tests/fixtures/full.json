@@ -1,6 +1,6 @@
 {
   "model": { "id": "claude-opus-4-7", "display_name": "Opus 4.7" },
-  "workspace": { "current_dir": "/Users/me/dev/claude-prompt" },
+  "workspace": { "current_dir": "/Users/me/dev/claude-statusline" },
   "cost": {
     "total_cost_usd": 1.234,
     "total_duration_ms": 720000,
