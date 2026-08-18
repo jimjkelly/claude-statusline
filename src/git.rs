@@ -1,20 +1,51 @@
+use std::io::Read;
 use std::path::Path;
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::time::{Duration, Instant};
+
+/// The statusline re-runs on every refresh tick, so a repo on a stalled
+/// network mount or holding a contended lock must not wall it. Past this
+/// budget we give up and render without a branch.
+const TIMEOUT: Duration = Duration::from_millis(500);
+const POLL_INTERVAL: Duration = Duration::from_millis(5);
 
 /// Look up the current git branch for `cwd`. Returns `None` if `cwd` is not
-/// a repo, if `git` is missing, or if HEAD is detached.
+/// a repo, if `git` is missing, if HEAD is detached, or if `git` takes longer
+/// than [`TIMEOUT`].
 #[must_use]
 pub fn current_branch(cwd: &Path) -> Option<String> {
-    let output = Command::new("git")
+    let mut child = Command::new("git")
         .arg("-C")
         .arg(cwd)
         .args(["branch", "--show-current"])
-        .output()
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()
         .ok()?;
-    if !output.status.success() {
+
+    let deadline = Instant::now() + TIMEOUT;
+    let status = loop {
+        match child.try_wait() {
+            Ok(Some(status)) => break status,
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(POLL_INTERVAL);
+            }
+            Err(_) => return None,
+        }
+    };
+    if !status.success() {
         return None;
     }
-    let name = String::from_utf8(output.stdout).ok()?;
+
+    // Safe to read only after exit: a branch name never approaches the pipe
+    // buffer size, so the child cannot have blocked on a full pipe.
+    let mut name = String::new();
+    child.stdout.take()?.read_to_string(&mut name).ok()?;
     let trimmed = name.trim();
     if trimmed.is_empty() {
         None

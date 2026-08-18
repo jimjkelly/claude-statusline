@@ -1,6 +1,8 @@
 use std::fmt::Write;
 use std::path::Path;
 
+use unicode_width::UnicodeWidthChar;
+
 use crate::bar;
 use crate::color::{self, Color};
 use crate::format;
@@ -229,7 +231,8 @@ pub fn line_three(input: &Input, branch: Option<&str>, opts: RenderOptions) -> S
     parts.join(" · ")
 }
 
-/// Count visible characters (excludes ANSI SGR escape sequences).
+/// Count display columns, skipping ANSI SGR escape sequences. Uses East Asian
+/// width so a CJK directory name costs the two columns it actually occupies.
 fn visible_width(s: &str) -> usize {
     let mut count = 0;
     let mut chars = s.chars();
@@ -242,7 +245,7 @@ fn visible_width(s: &str) -> usize {
             }
             continue;
         }
-        count += 1;
+        count += c.width().unwrap_or(0);
     }
     count
 }
@@ -303,6 +306,23 @@ mod tests {
 
     // resets_at 1_749_250_000; pick now 1 hour earlier.
     const NOW_EPOCH: i64 = 1_749_246_400;
+
+    #[test]
+    fn visible_width_counts_wide_chars_as_two_columns() {
+        assert_eq!(visible_width("日本語"), 6);
+        assert_eq!(visible_width("ascii"), 5);
+    }
+
+    #[test]
+    fn wide_dir_name_triggers_collapse() {
+        let mut input = fixture();
+        // 30 CJK chars occupy 60 columns; a naive char count would see 30.
+        input.workspace.current_dir = "/tmp/".to_string() + &"日".repeat(30);
+        let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 60);
+        let out = render(&input, Some("main"), opts);
+        let line3 = out.lines().last().unwrap_or_default();
+        assert_eq!(visible_width(line3), 60 + visible_width(" · main"));
+    }
 
     #[test]
     fn line_one_plain_no_color() {
