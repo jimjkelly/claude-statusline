@@ -20,6 +20,11 @@ jobs:
   test:
     name: fmt, clippy, test (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    # Same reason as the release build job: keep Windows off pwsh so shell
+    # syntax stays uniform across the matrix.
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
