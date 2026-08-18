@@ -63,6 +63,11 @@ Add to `~/.claude/settings.json`:
 
 Add `--nerd` to the command if your terminal has a Nerd Font installed.
 
+Responsive collapse needs **Claude Code 2.1.153 or later**, which exports
+`COLUMNS` to the statusline process. Claude Code captures stdout, so terminal
+width cannot be detected any other way; on older versions the layout falls
+back to a fixed 80 columns.
+
 ## Flags
 
 - `--nerd` — use Nerd Font glyphs in place of text labels.
