@@ -5,7 +5,7 @@ edition = "2021"
 description = "Claude Code statusline showing session and weekly rate-limit usage"
 repository = "https://github.com/jimjkelly/claude-statusline"
 readme = "README.md"
-license = "MIT"
+license = "MIT OR Apache-2.0"
 
 [dependencies]
 anyhow = "1"
