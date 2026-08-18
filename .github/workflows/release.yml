@@ -36,6 +36,11 @@ jobs:
     name: Build ${{ matrix.target }}
     needs: verify
     runs-on: ${{ matrix.os }}
+    # Windows runners default to pwsh, where "$VAR" does not expand. Every step
+    # in this job uses POSIX shell syntax, so pin bash for all of them.
+    defaults:
+      run:
+        shell: bash
     strategy:
       fail-fast: false
       matrix:
@@ -71,7 +76,6 @@ jobs:
         run: cargo build --release --locked --target "$TARGET"
 
       - name: Package
-        shell: bash
         env:
           TARGET: ${{ matrix.target }}
         run: |
@@ -89,7 +93,12 @@ jobs:
           cp README.md LICENSE-MIT LICENSE-APACHE CHANGELOG.md "$staging/"
           if [ "${RUNNER_OS}" = "Windows" ]; then
             cp "target/${TARGET}/release/claude-statusline.exe" "$staging/"
-            7z a "${staging}.zip" "$staging" >/dev/null
+            if command -v 7z >/dev/null 2>&1; then
+              7z a "${staging}.zip" "$staging" >/dev/null
+            else
+              powershell -Command \
+                "Compress-Archive -Path '${staging}' -DestinationPath '${staging}.zip'"
+            fi
             checksum "${staging}.zip" > "${staging}.zip.sha256"
           else
             cp "target/${TARGET}/release/claude-statusline" "$staging/"
