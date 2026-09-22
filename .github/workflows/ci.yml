@@ -34,7 +34,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: stable
           components: rustfmt, clippy
@@ -66,7 +66,7 @@ jobs:
             | python3 -c 'import json,sys; print(json.load(sys.stdin)["packages"][0]["rust_version"])')
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-      - uses: dtolnay/rust-toolchain@6c977a6ca4077a0ceb28ffbe03f59d46e9ac8772 # v1
+      - uses: dtolnay/rust-toolchain@02cb101ec7c40f2c49e1d9714d64511d8e1b74de # v1
         with:
           toolchain: ${{ steps.msrv.outputs.version }}
 
@@ -85,7 +85,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: DeterminateSystems/nix-installer-action@ef8a148080ab6020fd15196c2084a2eea5ff2d25 # v22
+      - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
 
       - name: Flake check
         run: nix flake check --print-build-logs
