@@ -2,9 +2,10 @@ use std::io::{self, Read, Write};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use claude_statusline::cli::Cli;
+use claude_statusline::cli::{Cli, Command};
 use claude_statusline::color;
 use claude_statusline::git;
+use claude_statusline::host::{self, Report};
 use claude_statusline::input::Input;
 use claude_statusline::render::{render, RenderOptions};
 use claude_statusline::theme::Theme;
@@ -81,9 +82,17 @@ fn run(args: &Cli) -> anyhow::Result<String> {
     Ok(render(&input, branch.as_deref(), opts))
 }
 
+/// The `state` subcommand: machine state as one line of JSON.
+fn state() -> anyhow::Result<String> {
+    Ok(serde_json::to_string(&Report::new(host::read()))?)
+}
+
 fn main() -> anyhow::Result<()> {
     let args = Cli::parse_args();
-    let output = run(&args)?;
+    let output = match args.command {
+        Some(Command::State) => state()?,
+        None => run(&args)?,
+    };
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "{output}")?;
     Ok(())
