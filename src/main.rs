@@ -1,12 +1,13 @@
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use claude_statusline::cli::Cli;
+use claude_statusline::cli::{Cli, Command};
 use claude_statusline::color;
 use claude_statusline::git;
+use claude_statusline::host::{self, Report};
 use claude_statusline::input::Input;
-use claude_statusline::render::{render, RenderOptions};
+use claude_statusline::render::{render, Local, RenderOptions};
 use claude_statusline::theme::Theme;
 
 /// Shown whenever stdin is empty or unparseable. Claude Code renders our
@@ -71,19 +72,41 @@ fn run(args: &Cli) -> anyhow::Result<String> {
     let theme = if args.nerd { Theme::Nerd } else { Theme::Plain };
     let color_on = color::enabled(args.no_color, std::env::var("NO_COLOR").ok().as_deref());
     let cwd = PathBuf::from(&input.workspace.current_dir);
-    let branch = if cwd.as_os_str().is_empty() {
-        None
+    let has_cwd = !cwd.as_os_str().is_empty();
+    // One budget for every git call in this refresh, so a stalled repo costs
+    // at most git::TIMEOUT in total.
+    let git_deadline = Instant::now() + git::TIMEOUT;
+    let branch = if has_cwd {
+        git::current_branch(&cwd, git_deadline)
     } else {
-        git::current_branch(&cwd)
+        None
+    };
+    let unsigned_commits = if has_cwd {
+        git::unsigned_local_commits(&cwd, git_deadline).unwrap_or(0)
+    } else {
+        0
+    };
+    let local = Local {
+        branch: branch.as_deref(),
+        unsigned_commits,
+        host: host::read_power(),
     };
     let opts = RenderOptions::new(theme, color_on, now_epoch(), columns());
 
-    Ok(render(&input, branch.as_deref(), opts))
+    Ok(render(&input, local, opts))
+}
+
+/// The `state` subcommand: machine state as one line of JSON.
+fn state() -> anyhow::Result<String> {
+    Ok(serde_json::to_string(&Report::new(host::read()))?)
 }
 
 fn main() -> anyhow::Result<()> {
     let args = Cli::parse_args();
-    let output = run(&args)?;
+    let output = match args.command {
+        Some(Command::State) => state()?,
+        None => run(&args)?,
+    };
     let mut stdout = io::stdout().lock();
     writeln!(stdout, "{output}")?;
     Ok(())

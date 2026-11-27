@@ -1,16 +1,46 @@
+use claude_statusline::host::{Milliamps, Millivolts, Percent, Power, Snapshot, Source, Watts};
 use claude_statusline::input::Input;
-use claude_statusline::render::{render, RenderOptions};
+use claude_statusline::render::{render, Local, RenderOptions};
 use claude_statusline::theme::Theme;
 
 #[expect(
     clippy::unwrap_used,
     reason = "test fixtures are valid by construction"
 )]
-fn run_fixture(path: &str, theme: Theme, color: bool, now: i64, cols: usize) -> String {
+fn run_with(path: &str, local: Local<'_>, opts: RenderOptions) -> String {
     let bytes = std::fs::read(path).unwrap();
     let input = Input::from_reader(&bytes[..]).unwrap();
-    let opts = RenderOptions::new(theme, color, now, cols);
-    render(&input, Some("main"), opts)
+    render(&input, local, opts)
+}
+
+fn run_fixture(path: &str, theme: Theme, color: bool, now: i64, cols: usize) -> String {
+    let local = Local {
+        branch: Some("main"),
+        ..Local::default()
+    };
+    run_with(path, local, RenderOptions::new(theme, color, now, cols))
+}
+
+#[test]
+fn snapshot_full_plain_conserve_unsigned() {
+    let host = Snapshot {
+        presence: None,
+        power: Some(Power {
+            source: Source::Ac,
+            percent: Percent(78),
+            charging: false,
+            current: Milliamps(-480),
+            voltage: Millivolts(12_700),
+            adapter: Some(Watts(30)),
+        }),
+    };
+    let local = Local {
+        branch: Some("main"),
+        unsigned_commits: 3,
+        host: Some(host),
+    };
+    let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
+    insta::assert_snapshot!(run_with("tests/fixtures/full.json", local, opts));
 }
 
 // `resets_at` in full.json is 1_749_250_000; pick a `now` 1 hour before so

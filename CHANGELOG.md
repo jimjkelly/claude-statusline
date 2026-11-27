@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `claude-statusline state` prints screen-lock, idle time, battery and
+  charger readings, and a work tier (`full`, `conserve`, `minimal`) as JSON.
+  macOS only; elsewhere it reports `{"supported":false}`.
+- A power segment leading line 2, shown on battery or when the battery
+  drains on AC.
+- An `N unsigned` segment on line 3 counting unsigned commits that are on no
+  remote, in repositories that sign by default.
+
 ## [0.1.0] - 2026-08-18
 
 Initial release.

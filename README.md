@@ -95,15 +95,71 @@ back to a fixed 80 columns.
 **Line 1** (always present, never collapses): session and weekly usage
 bars with time-until-reset, plus the model name.
 
-**Line 2** (collapses from right to left at narrow widths):
-context-window percentage, pace pendulum, session cost, duration, lines
-added/removed, and pull-request status when Claude Code surfaces it.
+**Line 2** (collapses from right to left at narrow widths): the power
+segment, context-window percentage, pace pendulum, session cost, duration,
+lines added/removed, and pull-request status when Claude Code surfaces it.
 
-**Line 3**: working directory and git branch.
+The power segment (macOS only) appears on battery, or on AC when the
+battery is draining because the charger cannot keep up:
+
+```
+Pwr conserve 30W -6.1W 78%
+```
+
+That is the work tier, the charger's rating (`bat` on battery), the power
+flowing into or out of the battery, and the charge. The tier is yellow at
+`conserve` and red at `minimal`; see [`state`](#state) for the rules. It is
+the last segment line 2 drops.
+
+**Line 3**: working directory, git branch, and `N unsigned` when the
+repository signs commits by default (`commit.gpgsign`), has a remote, and
+holds commits that are on no remote and carry no signature.
 
 When the parsed stdin lacks a field (older Claude Code, API-plan
 accounts, sessions without a PR, etc.), the corresponding segment is
 silently dropped.
+
+## `state`
+
+`claude-statusline state` prints the machine's screen-lock and power state
+as one line of JSON, for hooks and scripts:
+
+```json
+{
+  "supported": true,
+  "presence": { "locked": false, "idle_seconds": 4.7 },
+  "power": {
+    "source": "ac",
+    "battery_percent": 78,
+    "charging": false,
+    "battery_current_ma": -480,
+    "battery_voltage_mv": 12700,
+    "battery_watts": -6.1,
+    "adapter_watts": 30
+  },
+  "tier": "conserve",
+  "reason": "on AC (30 W) but battery draining 6.1 W"
+}
+```
+
+`presence` is absent without a GUI session, and `power` when there is no
+readable battery. `adapter_watts` is `null` on battery. Off macOS the output
+is `{"supported":false}`.
+
+The tier suggests how hard to work:
+
+| Source | Battery | Tier |
+| --- | --- | --- |
+| AC, battery holding (current ≥ −100 mA) | any | `full` |
+| AC, battery draining | ≥ 20% | `conserve` |
+| AC, battery draining | < 20% | `minimal` |
+| battery | > 50% | `full` |
+| battery | 20–50% | `conserve` |
+| battery | < 20% | `minimal` |
+
+Readings come from CoreGraphics and the `AppleSmartBattery` IOKit registry
+entry, without spawning processes. The battery gauge refreshes its averaged
+current roughly every 90 seconds.
 
 ## License
 

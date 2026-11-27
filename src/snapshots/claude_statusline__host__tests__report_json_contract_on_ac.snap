@@ -1,0 +1,22 @@
+---
+source: src/host.rs
+expression: "Report::new(Some(with_presence(ac(-480, 78))))"
+---
+{
+  "supported": true,
+  "presence": {
+    "locked": true,
+    "idle_seconds": 2820.5
+  },
+  "power": {
+    "source": "ac",
+    "battery_percent": 78,
+    "charging": false,
+    "battery_current_ma": -480,
+    "battery_voltage_mv": 12700,
+    "battery_watts": -6.1,
+    "adapter_watts": 30
+  },
+  "tier": "conserve",
+  "reason": "on AC (30 W) but battery draining 6.1 W"
+}

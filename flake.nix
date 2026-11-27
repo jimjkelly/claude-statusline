@@ -24,6 +24,8 @@
           inherit (cargoToml.package) version;
           src = self;
           cargoLock.lockFile = ./Cargo.lock;
+          # tests/unsigned_commits.rs drives real git repositories.
+          nativeCheckInputs = [ pkgs.git ];
 
           meta = {
             inherit (cargoToml.package) description;
