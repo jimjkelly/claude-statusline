@@ -6,6 +6,9 @@
 
 use serde::Serialize;
 
+#[cfg(target_os = "macos")]
+mod macos;
+
 /// Battery current. Negative while the battery discharges.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
@@ -190,6 +193,19 @@ impl Report {
             tier: Some(snapshot.tier()),
             reason: Some(snapshot.reason()),
         }
+    }
+}
+
+/// Read the machine's state, or `None` where reading is unsupported.
+#[must_use]
+pub fn read() -> Option<Snapshot> {
+    #[cfg(target_os = "macos")]
+    {
+        Some(macos::read())
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
     }
 }
 
