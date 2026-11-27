@@ -6,7 +6,8 @@ use unicode_width::UnicodeWidthChar;
 use crate::bar;
 use crate::color::{self, Color};
 use crate::format;
-use crate::host::{Snapshot, Source, Tier};
+use crate::git::MAX_SCANNED_COMMITS;
+use crate::host::{Snapshot, Source, Tier, Watts};
 use crate::input::Input;
 use crate::pace;
 use crate::theme::Theme;
@@ -182,8 +183,8 @@ fn power_segment(host: Option<Snapshot>, opts: RenderOptions, out: &mut String) 
     };
     out.push_str(opts.theme.power());
     paint(out, color, opts.color_enabled, tier.as_str());
-    match (power.source, power.adapter_watts) {
-        (Source::Ac, Some(w)) => {
+    match (power.source, power.adapter) {
+        (Source::Ac, Some(Watts(w))) => {
             let _ = write!(out, " {w}W");
         }
         (Source::Ac, None) => out.push_str(" AC"),
@@ -236,10 +237,10 @@ fn join_segments(segs: &[Segment]) -> String {
     bodies.join(" · ")
 }
 
-/// Render line 2: ctx bar, pace, cost, duration, lines, pr.
+/// Render line 2: power, ctx bar, pace, cost, duration, lines, pr.
 #[must_use]
-pub fn line_two(input: &Input, opts: RenderOptions) -> String {
-    join_segments(&line_two_segments(input, None, opts))
+pub fn line_two(input: &Input, host: Option<Snapshot>, opts: RenderOptions) -> String {
+    join_segments(&line_two_segments(input, host, opts))
 }
 
 /// Render line 3: working directory, git branch, and unsigned commits.
@@ -269,7 +270,11 @@ pub fn line_three(input: &Input, local: Local<'_>, opts: RenderOptions) -> Strin
 
     if local.unsigned_commits > 0 {
         let mut s = String::new();
-        let body = format!("{} unsigned", local.unsigned_commits);
+        let body = if local.unsigned_commits >= MAX_SCANNED_COMMITS {
+            format!("{MAX_SCANNED_COMMITS}+ unsigned")
+        } else {
+            format!("{} unsigned", local.unsigned_commits)
+        };
         paint(&mut s, Color::Yellow, opts.color_enabled, &body);
         parts.push(s);
     }
@@ -367,7 +372,7 @@ mod tests {
                 charging: false,
                 current: Milliamps(current),
                 voltage: Millivolts(12_700),
-                adapter_watts: adapter,
+                adapter: adapter.map(Watts),
             }),
         }
     }
@@ -455,6 +460,16 @@ mod tests {
     }
 
     #[test]
+    fn unsigned_count_at_the_scan_cap_reads_as_a_floor() {
+        let local = Local {
+            unsigned_commits: MAX_SCANNED_COMMITS,
+            ..on_main()
+        };
+        let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
+        assert!(line_three(&fixture(), local, opts).ends_with("main · 200+ unsigned"));
+    }
+
+    #[test]
     fn no_unsigned_segment_at_zero() {
         let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
         assert!(!line_three(&fixture(), on_main(), opts).contains("unsigned"));
@@ -503,7 +518,7 @@ mod tests {
     fn line_two_full_fixture() {
         let input = fixture();
         let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
-        let s = line_two(&input, opts);
+        let s = line_two(&input, None, opts);
         assert!(s.contains("Ctx ["));
         assert!(s.contains("Pace ["));
         assert!(s.contains("$1.23"));
@@ -533,7 +548,7 @@ mod tests {
         let bytes = include_bytes!("../tests/fixtures/minimal.json");
         let input = Input::from_reader(&bytes[..]).unwrap();
         let opts = RenderOptions::new(Theme::Plain, false, 0, 200);
-        let s = line_two(&input, opts);
+        let s = line_two(&input, None, opts);
         assert!(!s.contains("Ctx"));
         assert!(!s.contains("Pace"));
         assert!(!s.contains('$'));

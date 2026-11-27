@@ -1,0 +1,22 @@
+---
+source: src/host.rs
+expression: "Report::new(Some(with_presence(battery(42))))"
+---
+{
+  "supported": true,
+  "presence": {
+    "locked": true,
+    "idle_seconds": 2820.5
+  },
+  "power": {
+    "source": "battery",
+    "battery_percent": 42,
+    "charging": false,
+    "battery_current_ma": -770,
+    "battery_voltage_mv": 12700,
+    "battery_watts": -9.78,
+    "adapter_watts": null
+  },
+  "tier": "conserve",
+  "reason": "on battery at 42%, drawing 9.8 W"
+}

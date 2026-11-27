@@ -142,8 +142,9 @@ as one line of JSON, for hooks and scripts:
 }
 ```
 
-`presence` is absent without a GUI session and `power` without a battery.
-Off macOS the output is `{"supported":false}`.
+`presence` is absent without a GUI session, and `power` when there is no
+readable battery. `adapter_watts` is `null` on battery. Off macOS the output
+is `{"supported":false}`.
 
 The tier suggests how hard to work:
 

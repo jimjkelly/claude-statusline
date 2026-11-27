@@ -1,4 +1,4 @@
-use claude_statusline::host::{Milliamps, Millivolts, Percent, Power, Snapshot, Source};
+use claude_statusline::host::{Milliamps, Millivolts, Percent, Power, Snapshot, Source, Watts};
 use claude_statusline::input::Input;
 use claude_statusline::render::{render, Local, RenderOptions};
 use claude_statusline::theme::Theme;
@@ -31,7 +31,7 @@ fn snapshot_full_plain_conserve_unsigned() {
             charging: false,
             current: Milliamps(-480),
             voltage: Millivolts(12_700),
-            adapter_watts: Some(30),
+            adapter: Some(Watts(30)),
         }),
     };
     let local = Local {

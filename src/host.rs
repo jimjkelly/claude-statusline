@@ -24,6 +24,16 @@ pub struct Millivolts(pub u32);
 #[serde(transparent)]
 pub struct Percent(pub u8);
 
+/// A charger's rated output.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(transparent)]
+pub struct Watts(pub u32);
+
+/// Time since the last keyboard or pointer input.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct Seconds(pub f64);
+
 /// Where the machine draws power from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -33,10 +43,10 @@ pub enum Source {
 }
 
 /// Whether someone is at the machine.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Presence {
     pub locked: bool,
-    pub idle_seconds: f64,
+    pub idle: Seconds,
 }
 
 /// Battery and charger readings.
@@ -47,7 +57,7 @@ pub struct Power {
     pub charging: bool,
     pub current: Milliamps,
     pub voltage: Millivolts,
-    pub adapter_watts: Option<u32>,
+    pub adapter: Option<Watts>,
 }
 
 /// How hard Claude should work, given the power situation.
@@ -126,12 +136,16 @@ impl Snapshot {
     #[must_use]
     pub fn reason(&self) -> String {
         let Some(power) = self.power else {
-            return "no battery".to_string();
+            return "no battery reading".to_string();
         };
-        let outflow = -power.battery_watts();
-        match (power.source, power.adapter_watts) {
+        // Clamped so a battery that briefly reads zero or charging just after
+        // unplugging does not report "-0.0 W" drawn.
+        let outflow = (-power.battery_watts()).max(0.0);
+        match (power.source, power.adapter) {
             (Source::Ac, _) if !power.draining() => "on AC, battery holding".to_string(),
-            (Source::Ac, Some(w)) => format!("on AC ({w} W) but battery draining {outflow:.1} W"),
+            (Source::Ac, Some(Watts(w))) => {
+                format!("on AC ({w} W) but battery draining {outflow:.1} W")
+            }
             (Source::Ac, None) => format!("on AC but battery draining {outflow:.1} W"),
             (Source::Battery, _) => {
                 format!("on battery at {}%, drawing {outflow:.1} W", power.percent.0)
@@ -140,12 +154,14 @@ impl Snapshot {
     }
 }
 
-/// The JSON printed by `claude-statusline state`.
+/// The JSON printed by `claude-statusline state`. Hooks parse it, so its field
+/// names are a contract: every field lives in a report struct here rather than
+/// being serialized from the domain types, and tests pin the shape.
 #[derive(Debug, Serialize)]
 pub struct Report {
     pub supported: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub presence: Option<Presence>,
+    pub presence: Option<PresenceReport>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub power: Option<PowerReport>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -154,7 +170,15 @@ pub struct Report {
     pub reason: Option<String>,
 }
 
+/// The `presence` object in [`Report`].
+#[derive(Debug, Serialize)]
+pub struct PresenceReport {
+    pub locked: bool,
+    pub idle_seconds: Seconds,
+}
+
 /// The `power` object in [`Report`], with units in the field names.
+/// `adapter_watts` is `null` on battery.
 #[derive(Debug, Serialize)]
 pub struct PowerReport {
     pub source: Source,
@@ -163,7 +187,7 @@ pub struct PowerReport {
     pub battery_current_ma: Milliamps,
     pub battery_voltage_mv: Millivolts,
     pub battery_watts: f64,
-    pub adapter_watts: Option<u32>,
+    pub adapter_watts: Option<Watts>,
 }
 
 impl Report {
@@ -180,7 +204,10 @@ impl Report {
         };
         Self {
             supported: true,
-            presence: snapshot.presence,
+            presence: snapshot.presence.map(|p| PresenceReport {
+                locked: p.locked,
+                idle_seconds: p.idle,
+            }),
             power: snapshot.power.map(|p| PowerReport {
                 source: p.source,
                 battery_percent: p.percent,
@@ -188,7 +215,7 @@ impl Report {
                 battery_current_ma: p.current,
                 battery_voltage_mv: p.voltage,
                 battery_watts: (p.battery_watts() * 100.0).round() / 100.0,
-                adapter_watts: p.adapter_watts,
+                adapter_watts: p.adapter,
             }),
             tier: Some(snapshot.tier()),
             reason: Some(snapshot.reason()),
@@ -201,7 +228,27 @@ impl Report {
 pub fn read() -> Option<Snapshot> {
     #[cfg(target_os = "macos")]
     {
-        Some(macos::read())
+        Some(Snapshot {
+            presence: macos::presence(),
+            power: macos::power(),
+        })
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        None
+    }
+}
+
+/// Like [`read`] without presence, which costs several milliseconds and which
+/// the statusline does not render.
+#[must_use]
+pub fn read_power() -> Option<Snapshot> {
+    #[cfg(target_os = "macos")]
+    {
+        Some(Snapshot {
+            presence: None,
+            power: macos::power(),
+        })
     }
     #[cfg(not(target_os = "macos"))]
     {
@@ -222,7 +269,7 @@ mod tests {
                 charging: false,
                 current: Milliamps(current),
                 voltage: Millivolts(12_700),
-                adapter_watts: Some(30),
+                adapter: Some(Watts(30)),
             }),
         }
     }
@@ -236,7 +283,7 @@ mod tests {
                 charging: false,
                 current: Milliamps(-770),
                 voltage: Millivolts(12_700),
-                adapter_watts: None,
+                adapter: None,
             }),
         }
     }
@@ -244,7 +291,7 @@ mod tests {
     #[test]
     fn no_battery_is_full() {
         assert_eq!(Snapshot::default().tier(), Tier::Full);
-        assert_eq!(Snapshot::default().reason(), "no battery");
+        assert_eq!(Snapshot::default().reason(), "no battery reading");
     }
 
     #[test]
@@ -279,11 +326,39 @@ mod tests {
     }
 
     #[test]
+    #[expect(clippy::unwrap_used, reason = "the fixture always has power")]
     fn battery_watts_is_signed() {
-        let Some(power) = ac(-480, 78).power else {
-            return;
-        };
+        let power = ac(-480, 78).power.unwrap();
         assert!((power.battery_watts() - -6.096).abs() < 1e-9);
+    }
+
+    #[test]
+    #[expect(clippy::unwrap_used, reason = "the fixture always has power")]
+    fn battery_reason_never_shows_negative_draw() {
+        let mut snapshot = battery(100);
+        snapshot.power.as_mut().unwrap().current = Milliamps(0);
+        assert_eq!(snapshot.reason(), "on battery at 100%, drawing 0.0 W");
+        snapshot.power.as_mut().unwrap().current = Milliamps(95);
+        assert_eq!(snapshot.reason(), "on battery at 100%, drawing 0.0 W");
+    }
+
+    fn with_presence(mut snapshot: Snapshot) -> Snapshot {
+        snapshot.presence = Some(Presence {
+            locked: true,
+            idle: Seconds(2820.5),
+        });
+        snapshot
+    }
+
+    /// Pins the JSON that `claude-guard` and other hooks parse with jq.
+    #[test]
+    fn report_json_contract_on_ac() {
+        insta::assert_json_snapshot!(Report::new(Some(with_presence(ac(-480, 78)))));
+    }
+
+    #[test]
+    fn report_json_contract_on_battery() {
+        insta::assert_json_snapshot!(Report::new(Some(with_presence(battery(42)))));
     }
 
     #[test]

@@ -21,37 +21,34 @@ use objc2_io_kit::{
     IOServiceMatching,
 };
 
-use super::{Milliamps, Millivolts, Percent, Power, Presence, Snapshot, Source};
+use super::{Milliamps, Millivolts, Percent, Power, Presence, Seconds, Source, Watts};
 
 type Properties = CFDictionary<CFString, CFType>;
 
 /// `kCGAnyInputEventType`, which C defines as `(CGEventType)(~0)`.
 const ANY_INPUT_EVENT: CGEventType = CGEventType(u32::MAX);
 
-pub(super) fn read() -> Snapshot {
-    Snapshot {
-        presence: presence(),
-        power: power(),
-    }
-}
-
-fn presence() -> Option<Presence> {
+pub(super) fn presence() -> Option<Presence> {
     let session = CGSessionCopyCurrentDictionary()?;
+    // SAFETY: CGSession's dictionary is keyed by CFString with CF values.
+    let props = unsafe { properties(&session) };
     // The key exists only while the screen is locked.
-    let locked = flag(properties(&session), "CGSSessionScreenIsLocked").unwrap_or(false);
-    let idle_seconds = CGEventSource::seconds_since_last_event_type(
+    let locked = flag(props, "CGSSessionScreenIsLocked").unwrap_or(false);
+    let idle = CGEventSource::seconds_since_last_event_type(
         CGEventSourceStateID::CombinedSessionState,
         ANY_INPUT_EVENT,
     );
     Some(Presence {
         locked,
-        idle_seconds,
+        idle: Seconds(idle),
     })
 }
 
-fn power() -> Option<Power> {
+pub(super) fn power() -> Option<Power> {
     let battery = smart_battery()?;
-    let props = properties(&battery);
+    // SAFETY: IORegistry property dictionaries are keyed by CFString with CF
+    // values.
+    let props = unsafe { properties(&battery) };
     let external = flag(props, "ExternalConnected").unwrap_or(false);
     Some(Power {
         source: if external {
@@ -59,18 +56,32 @@ fn power() -> Option<Power> {
         } else {
             Source::Battery
         },
-        percent: Percent(u8::try_from(int(props, "CurrentCapacity")?).ok()?),
+        percent: percent(int(props, "CurrentCapacity")?, int(props, "MaxCapacity")?)?,
         charging: flag(props, "IsCharging").unwrap_or(false),
         current: Milliamps(i32::try_from(int(props, "Amperage")?).ok()?),
         voltage: Millivolts(u32::try_from(int(props, "Voltage")?).ok()?),
-        adapter_watts: if external { adapter_watts(props) } else { None },
+        adapter: if external { adapter(props) } else { None },
     })
 }
 
-fn adapter_watts(props: &Properties) -> Option<u32> {
+/// Apple silicon reports `CurrentCapacity` as a percentage against a
+/// `MaxCapacity` of 100; Intel Macs report both in mAh. The ratio is right
+/// for either.
+fn percent(current: i64, max: i64) -> Option<Percent> {
+    if max <= 0 || current < 0 {
+        return None;
+    }
+    let rounded = (current * 100 + max / 2) / max;
+    u8::try_from(rounded.min(100)).ok().map(Percent)
+}
+
+fn adapter(props: &Properties) -> Option<Watts> {
     let details = get(props, "AdapterDetails")?;
     let details = details.downcast_ref::<CFDictionary>()?;
-    u32::try_from(int(properties(details), "Watts")?).ok()
+    // SAFETY: a nested IORegistry dictionary has the same key and value types
+    // as its parent.
+    let details = unsafe { properties(details) };
+    u32::try_from(int(details, "Watts")?).ok().map(Watts)
 }
 
 /// Copy the `AppleSmartBattery` service's properties; `None` without a battery.
@@ -97,9 +108,14 @@ fn smart_battery() -> Option<CFRetained<CFMutableDictionary>> {
     Some(unsafe { CFRetained::from_raw(raw) })
 }
 
-fn properties(dict: &CFDictionary) -> &Properties {
-    // SAFETY: CGSession and IORegistry property dictionaries are keyed by
-    // CFString and hold CF objects, which is all `Properties` claims.
+/// View a CF dictionary as string-keyed properties.
+///
+/// # Safety
+///
+/// Every key in `dict` must be a `CFString` and every value a CF object, as
+/// in `CGSession` and `IORegistry` property dictionaries.
+unsafe fn properties(dict: &CFDictionary) -> &Properties {
+    // SAFETY: the caller guarantees the key and value types.
     unsafe { dict.cast_unchecked() }
 }
 
@@ -125,14 +141,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn percent_handles_both_capacity_units() {
+        assert_eq!(percent(78, 100), Some(Percent(78)));
+        assert_eq!(percent(3_510, 4_500), Some(Percent(78)));
+        assert_eq!(percent(4_600, 4_500), Some(Percent(100)));
+        assert_eq!(percent(0, 4_500), Some(Percent(0)));
+    }
+
+    #[test]
+    fn percent_rejects_nonsense() {
+        assert_eq!(percent(50, 0), None);
+        assert_eq!(percent(-1, 100), None);
+    }
+
+    #[test]
     fn read_returns_plausible_values() {
-        let snapshot = read();
-        if let Some(power) = snapshot.power {
+        if let Some(power) = power() {
             assert!(power.percent.0 <= 100);
             assert!(power.voltage.0 > 0);
         }
-        if let Some(presence) = snapshot.presence {
-            assert!(presence.idle_seconds >= 0.0);
+        if let Some(presence) = presence() {
+            assert!(presence.idle.0 >= 0.0);
         }
     }
 }

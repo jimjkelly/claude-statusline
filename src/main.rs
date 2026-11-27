@@ -1,6 +1,6 @@
 use std::io::{self, Read, Write};
 use std::path::PathBuf;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use claude_statusline::cli::{Cli, Command};
 use claude_statusline::color;
@@ -72,21 +72,24 @@ fn run(args: &Cli) -> anyhow::Result<String> {
     let theme = if args.nerd { Theme::Nerd } else { Theme::Plain };
     let color_on = color::enabled(args.no_color, std::env::var("NO_COLOR").ok().as_deref());
     let cwd = PathBuf::from(&input.workspace.current_dir);
-    let in_repo = !cwd.as_os_str().is_empty();
-    let branch = if in_repo {
-        git::current_branch(&cwd)
+    let has_cwd = !cwd.as_os_str().is_empty();
+    // One budget for every git call in this refresh, so a stalled repo costs
+    // at most git::TIMEOUT in total.
+    let git_deadline = Instant::now() + git::TIMEOUT;
+    let branch = if has_cwd {
+        git::current_branch(&cwd, git_deadline)
     } else {
         None
     };
-    let unsigned_commits = if in_repo {
-        git::unsigned_local_commits(&cwd).unwrap_or(0)
+    let unsigned_commits = if has_cwd {
+        git::unsigned_local_commits(&cwd, git_deadline).unwrap_or(0)
     } else {
         0
     };
     let local = Local {
         branch: branch.as_deref(),
         unsigned_commits,
-        host: host::read(),
+        host: host::read_power(),
     };
     let opts = RenderOptions::new(theme, color_on, now_epoch(), columns());
 
