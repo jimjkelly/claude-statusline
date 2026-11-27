@@ -3,6 +3,7 @@ pub mod cli;
 pub mod color;
 pub mod format;
 pub mod git;
+pub mod host;
 pub mod input;
 pub mod pace;
 pub mod render;
