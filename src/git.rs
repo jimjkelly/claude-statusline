@@ -199,7 +199,7 @@ mod tests {
         // expect Some. If running from somewhere else (CI scratch) we
         // accept None.
         if let Some(b) = branch {
-            assert!(!b.is_empty());
+            assert_ne!(b, "");
         }
     }
 
