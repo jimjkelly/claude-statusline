@@ -61,6 +61,14 @@ impl Theme {
             Self::Nerd => "\u{f017} ", // nf-fa-clock
         }
     }
+
+    #[must_use]
+    pub fn power(self) -> &'static str {
+        match self {
+            Self::Plain => "Pwr ",
+            Self::Nerd => "\u{f0e7} ", // nf-fa-bolt
+        }
+    }
 }
 
 #[cfg(test)]

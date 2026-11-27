@@ -6,9 +6,19 @@ use unicode_width::UnicodeWidthChar;
 use crate::bar;
 use crate::color::{self, Color};
 use crate::format;
+use crate::host::{Snapshot, Source, Tier};
 use crate::input::Input;
 use crate::pace;
 use crate::theme::Theme;
+
+/// Facts about the machine and checkout that do not come from Claude Code's
+/// stdin.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct Local<'a> {
+    pub branch: Option<&'a str>,
+    pub unsigned_commits: usize,
+    pub host: Option<Snapshot>,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct RenderOptions {
@@ -156,6 +166,32 @@ fn pr_segment(input: &Input, out: &mut String) {
     let _ = write!(out, "#{} {}", pr.number, pr.review_state);
 }
 
+/// Shown on battery or whenever the tier is not `full`; hidden on AC at
+/// `full`, where there is nothing to act on.
+fn power_segment(host: Option<Snapshot>, opts: RenderOptions, out: &mut String) {
+    let Some(snapshot) = host else { return };
+    let Some(power) = snapshot.power else { return };
+    let tier = snapshot.tier();
+    if power.source == Source::Ac && tier == Tier::Full {
+        return;
+    }
+    let color = match tier {
+        Tier::Full => Color::Default,
+        Tier::Conserve => Color::Yellow,
+        Tier::Minimal => Color::Red,
+    };
+    out.push_str(opts.theme.power());
+    paint(out, color, opts.color_enabled, tier.as_str());
+    match (power.source, power.adapter_watts) {
+        (Source::Ac, Some(w)) => {
+            let _ = write!(out, " {w}W");
+        }
+        (Source::Ac, None) => out.push_str(" AC"),
+        (Source::Battery, _) => out.push_str(" bat"),
+    }
+    let _ = write!(out, " {:+.1}W {}%", power.battery_watts(), power.percent.0);
+}
+
 struct Segment {
     kind: &'static str,
     body: String,
@@ -167,10 +203,13 @@ fn push_if_nonempty(segs: &mut Vec<Segment>, kind: &'static str, body: String) {
     }
 }
 
-fn line_two_segments(input: &Input, opts: RenderOptions) -> Vec<Segment> {
+fn line_two_segments(input: &Input, host: Option<Snapshot>, opts: RenderOptions) -> Vec<Segment> {
     let mut segs: Vec<Segment> = Vec::new();
 
     let mut tmp = String::new();
+    power_segment(host, opts, &mut tmp);
+    push_if_nonempty(&mut segs, "power", std::mem::take(&mut tmp));
+
     ctx_segment(input, opts, &mut tmp);
     push_if_nonempty(&mut segs, "ctx", std::mem::take(&mut tmp));
 
@@ -200,12 +239,12 @@ fn join_segments(segs: &[Segment]) -> String {
 /// Render line 2: ctx bar, pace, cost, duration, lines, pr.
 #[must_use]
 pub fn line_two(input: &Input, opts: RenderOptions) -> String {
-    join_segments(&line_two_segments(input, opts))
+    join_segments(&line_two_segments(input, None, opts))
 }
 
-/// Render line 3: working directory and git branch.
+/// Render line 3: working directory, git branch, and unsigned commits.
 #[must_use]
-pub fn line_three(input: &Input, branch: Option<&str>, opts: RenderOptions) -> String {
+pub fn line_three(input: &Input, local: Local<'_>, opts: RenderOptions) -> String {
     let mut parts: Vec<String> = Vec::new();
 
     let dir_name = Path::new(&input.workspace.current_dir)
@@ -219,13 +258,20 @@ pub fn line_three(input: &Input, branch: Option<&str>, opts: RenderOptions) -> S
         parts.push(s);
     }
 
-    if let Some(b) = branch {
+    if let Some(b) = local.branch {
         if !b.is_empty() {
             let mut s = String::new();
             s.push_str(opts.theme.branch());
             s.push_str(b);
             parts.push(s);
         }
+    }
+
+    if local.unsigned_commits > 0 {
+        let mut s = String::new();
+        let body = format!("{} unsigned", local.unsigned_commits);
+        paint(&mut s, Color::Yellow, opts.color_enabled, &body);
+        parts.push(s);
     }
 
     parts.join(" · ")
@@ -250,7 +296,7 @@ fn visible_width(s: &str) -> usize {
     count
 }
 
-const DROP_ORDER: &[&str] = &["lines", "duration", "pr", "cost", "pace", "ctx"];
+const DROP_ORDER: &[&str] = &["lines", "duration", "pr", "cost", "pace", "ctx", "power"];
 
 /// Render the full three-line statusline with responsive collapse.
 ///
@@ -258,8 +304,8 @@ const DROP_ORDER: &[&str] = &["lines", "duration", "pr", "cost", "pace", "ctx"];
 /// `opts.columns`. If line 1 still overflows, shrinks the session/weekly
 /// bars from 12 to 4 cells. Line 3 (dir + branch) is never collapsed.
 #[must_use]
-pub fn render(input: &Input, branch: Option<&str>, opts: RenderOptions) -> String {
-    let mut segs = line_two_segments(input, opts);
+pub fn render(input: &Input, local: Local<'_>, opts: RenderOptions) -> String {
+    let mut segs = line_two_segments(input, local.host, opts);
     let mut line2 = join_segments(&segs);
     let max = opts.columns;
 
@@ -279,7 +325,7 @@ pub fn render(input: &Input, branch: Option<&str>, opts: RenderOptions) -> Strin
         line1
     };
 
-    let line3 = line_three(input, branch, opts);
+    let line3 = line_three(input, local, opts);
     let mut lines: Vec<&str> = Vec::with_capacity(3);
     lines.push(&line1_final);
     if !line2.is_empty() {
@@ -294,6 +340,7 @@ pub fn render(input: &Input, branch: Option<&str>, opts: RenderOptions) -> Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::host::{Milliamps, Millivolts, Percent, Power};
 
     #[expect(
         clippy::unwrap_used,
@@ -302,6 +349,115 @@ mod tests {
     fn fixture() -> Input {
         let bytes = include_bytes!("../tests/fixtures/full.json");
         Input::from_reader(&bytes[..]).unwrap()
+    }
+
+    fn on_main() -> Local<'static> {
+        Local {
+            branch: Some("main"),
+            ..Local::default()
+        }
+    }
+
+    fn host(source: Source, current: i32, percent: u8, adapter: Option<u32>) -> Snapshot {
+        Snapshot {
+            presence: None,
+            power: Some(Power {
+                source,
+                percent: Percent(percent),
+                charging: false,
+                current: Milliamps(current),
+                voltage: Millivolts(12_700),
+                adapter_watts: adapter,
+            }),
+        }
+    }
+
+    fn render_wide(local: Local<'_>, color: bool) -> String {
+        render(
+            &fixture(),
+            local,
+            RenderOptions::new(Theme::Plain, color, NOW_EPOCH, 200),
+        )
+    }
+
+    #[test]
+    fn power_hidden_on_ac_at_full() {
+        let local = Local {
+            host: Some(host(Source::Ac, 0, 100, Some(140))),
+            ..on_main()
+        };
+        assert!(!render_wide(local, false).contains("Pwr"));
+    }
+
+    #[test]
+    fn power_hidden_without_a_battery() {
+        let local = Local {
+            host: Some(Snapshot::default()),
+            ..on_main()
+        };
+        assert!(!render_wide(local, false).contains("Pwr"));
+    }
+
+    #[test]
+    fn power_shown_on_battery_even_at_full() {
+        let local = Local {
+            host: Some(host(Source::Battery, -770, 82, None)),
+            ..on_main()
+        };
+        assert!(render_wide(local, false).contains("Pwr full bat -9.8W 82%"));
+    }
+
+    #[test]
+    fn power_shown_on_draining_charger() {
+        let local = Local {
+            host: Some(host(Source::Ac, -480, 78, Some(30))),
+            ..on_main()
+        };
+        let line2 = render_wide(local, false).lines().nth(1).map(str::to_owned);
+        assert_eq!(
+            line2.as_deref().and_then(|l| l.split(" · ").next()),
+            Some("Pwr conserve 30W -6.1W 78%")
+        );
+    }
+
+    #[test]
+    fn minimal_tier_is_red() {
+        let local = Local {
+            host: Some(host(Source::Battery, -770, 15, None)),
+            ..on_main()
+        };
+        assert!(render_wide(local, true).contains("\u{1b}[31mminimal\u{1b}[0m"));
+    }
+
+    #[test]
+    fn power_outlasts_other_segments_when_narrow() {
+        let local = Local {
+            host: Some(host(Source::Ac, -480, 78, Some(30))),
+            ..on_main()
+        };
+        let out = render(
+            &fixture(),
+            local,
+            RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 40),
+        );
+        assert!(out.contains("Pwr conserve"));
+        assert!(!out.contains("Ctx ["));
+    }
+
+    #[test]
+    fn unsigned_commits_follow_the_branch() {
+        let local = Local {
+            unsigned_commits: 3,
+            ..on_main()
+        };
+        let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
+        assert!(line_three(&fixture(), local, opts).ends_with("main · 3 unsigned"));
+    }
+
+    #[test]
+    fn no_unsigned_segment_at_zero() {
+        let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
+        assert!(!line_three(&fixture(), on_main(), opts).contains("unsigned"));
     }
 
     // resets_at 1_749_250_000; pick now 1 hour earlier.
@@ -319,7 +475,7 @@ mod tests {
         // 30 CJK chars occupy 60 columns; a naive char count would see 30.
         input.workspace.current_dir = "/tmp/".to_string() + &"日".repeat(30);
         let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 60);
-        let out = render(&input, Some("main"), opts);
+        let out = render(&input, on_main(), opts);
         let line3 = out.lines().last().unwrap_or_default();
         assert_eq!(visible_width(line3), 60 + visible_width(" · main"));
     }
@@ -363,7 +519,7 @@ mod tests {
     fn line_three_full_fixture() {
         let input = fixture();
         let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
-        let s = line_three(&input, Some("main"), opts);
+        let s = line_three(&input, on_main(), opts);
         assert!(s.contains("claude-statusline"));
         assert!(s.contains("main"));
     }
@@ -395,7 +551,7 @@ mod tests {
     fn wide_terminal_keeps_everything() {
         let input = fixture();
         let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 200);
-        let out = render(&input, Some("main"), opts);
+        let out = render(&input, on_main(), opts);
         assert!(out.contains("+24/-7"));
         assert!(out.contains("12m"));
         assert!(out.contains("Pace ["));
@@ -409,7 +565,7 @@ mod tests {
     fn narrow_terminal_drops_lowest_priority_first() {
         let input = fixture();
         let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 70);
-        let out = render(&input, Some("main"), opts);
+        let out = render(&input, on_main(), opts);
         assert!(!out.contains("+24/-7"));
         // Line 1's Sess and Week always survive.
         assert!(out.contains("Sess "));
@@ -420,7 +576,7 @@ mod tests {
     fn very_narrow_terminal_shortens_line_one_bars() {
         let input = fixture();
         let opts = RenderOptions::new(Theme::Plain, false, NOW_EPOCH, 40);
-        let out = render(&input, Some("main"), opts);
+        let out = render(&input, on_main(), opts);
         assert!(out.contains("Sess "));
         assert!(out.contains("Week "));
     }
